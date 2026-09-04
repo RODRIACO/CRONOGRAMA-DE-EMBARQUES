@@ -517,17 +517,21 @@ function setupAutoScroll(){
   document.querySelectorAll(".day-col").forEach((col, i) => {
     const body = col.querySelector(".day-body");
     const scrollEl = col.querySelector(".day-scroll");
-    const distance = Math.round(scrollEl.scrollHeight - body.clientHeight);
-    if (distance > AUTOSCROLL_MIN_OVERFLOW && scrollEl.children.length){
+    // Measure the height of ONE full set of cards before duplicating —
+    // the loop must travel exactly this much, not just the overflow past
+    // the visible area, otherwise the reset snaps back visibly.
+    const singleSetHeight = Math.round(scrollEl.scrollHeight);
+    const overflow = singleSetHeight - body.clientHeight;
+    if (overflow > AUTOSCROLL_MIN_OVERFLOW && scrollEl.children.length){
       // Duplicate the card list once so the loop wraps seamlessly:
       // once the animation scrolls exactly one set's height, the copy
       // underneath lines up pixel-for-pixel with the original start.
       scrollEl.innerHTML += scrollEl.innerHTML;
-      const duration = distance / AUTOSCROLL_PX_PER_SEC;
+      const duration = singleSetHeight / AUTOSCROLL_PX_PER_SEC;
       const name = `ascroll${i}`;
       css += `@keyframes ${name}{
         0%{ transform:translateY(0); }
-        100%{ transform:translateY(-${distance}px); }
+        100%{ transform:translateY(-${singleSetHeight}px); }
       }\n`;
       scrollEl.style.animation = `${name} ${duration.toFixed(2)}s linear infinite`;
     } else {
