@@ -156,8 +156,9 @@
     overflow:hidden;
     box-shadow:0 6px 16px rgba(20,40,80,0.08);
     backdrop-filter:blur(2px);
-    animation:fadeIn 0.5s ease both;
   }
+  /* só na primeira pintura — em atualizações, refazer o fade faz o quadro piscar */
+  .day-col.fade-in{ animation:fadeIn 0.5s ease both; }
   @keyframes fadeIn{
     from{ opacity:0; transform:translateY(10px); }
     to{ opacity:1; transform:translateY(0); }
@@ -329,6 +330,8 @@ if (supabaseConfigured){
 }
 
 let rows = [];
+let lastRenderSignature = null;
+let firstPaint = true;
 
 function stripAccents(s){
   return s.normalize("NFD").replace(/[̀-ͯ]/g,"");
@@ -431,6 +434,16 @@ async function loadData(){
     document.getElementById("lastUpdated").textContent =
       "Tempo real (Supabase) · última atualização às " + new Date().toLocaleTimeString("pt-BR");
     errorBanner.style.display = "none";
+
+    // Só redesenha se algo realmente mudou. Sem isso, cada atualização
+    // recria os cards à toa: o quadro pisca e as colunas que estão rolando
+    // voltam para o começo. A data de hoje entra na assinatura para o
+    // quadro virar sozinho na passagem de um dia para o outro.
+    const signature = new Date().toDateString() + "|" + data.map(r =>
+      [r.seq, r.cliente, r.data, r.roteiro, r.status].join("~")
+    ).join("|");
+    if (signature === lastRenderSignature) return;
+    lastRenderSignature = signature;
     render();
   } catch (err){
     errorBanner.style.display = "block";
@@ -438,11 +451,20 @@ async function loadData(){
   }
 }
 
+// O Supabase dispara um evento POR LINHA alterada. Como o Apps Script grava
+// as 236 linhas de uma vez, chegaria uma rajada de centenas de eventos.
+// Aqui esperamos a rajada terminar e recarregamos uma única vez.
+let realtimeDebounce = null;
+function scheduleReload(){
+  clearTimeout(realtimeDebounce);
+  realtimeDebounce = setTimeout(loadData, 1000);
+}
+
 function subscribeRealtime(){
   if (!supabaseConfigured) return;
   supabaseClient
     .channel("embarques-realtime")
-    .on("postgres_changes", { event: "*", schema: "public", table: "embarques" }, () => loadData())
+    .on("postgres_changes", { event: "*", schema: "public", table: "embarques" }, scheduleReload)
     .subscribe();
 }
 
@@ -487,7 +509,7 @@ function renderWeek(){
     const isToday = isSameDay(d, today);
     const dayRows = rows.filter(r => r.dateObj && isSameDay(r.dateObj, d));
     const col = document.createElement("div");
-    col.className = "day-col" + (isToday ? " is-today" : "");
+    col.className = "day-col" + (isToday ? " is-today" : "") + (firstPaint ? " fade-in" : "");
     let innerHtml = "";
     if (dayRows.length === 0){
       innerHtml = `<div class="day-empty">Sem embarques</div>`;
@@ -504,6 +526,7 @@ function renderWeek(){
     col.innerHTML = `<div class="day-header">${dayNames[i]}-FEIRA<span class="date">${fmtDate(d)}</span></div><div class="day-body"><div class="day-scroll">${innerHtml}</div></div>`;
     grid.appendChild(col);
   }
+  firstPaint = false;
   setupAutoScroll();
 }
 
