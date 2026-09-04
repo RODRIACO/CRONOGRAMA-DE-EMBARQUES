@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Cronograma de Embarques — Rodriaço</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   :root{
     --orange:#FF7A29;
@@ -238,6 +239,9 @@
   .ship-card.st-prototipo .badge{ background:#B8860B; }
   .ship-card.st-planejado{ border-left-color:var(--gray); }
   .ship-card.st-planejado .badge{ background:var(--gray); }
+  .ship-card.st-cancelado{ border-left-color:#3F454E; opacity:0.6; }
+  .ship-card.st-cancelado .badge{ background:#3F454E; }
+  .ship-card.st-cancelado .crm{ text-decoration:line-through; }
 
   .ship-card.st-atrasado{
     border-left-color:var(--red);
@@ -307,39 +311,27 @@
 <footer id="lastUpdated">Carregando…</footer>
 
 <script>
-const CSV_URL = "https://docs.google.com/spreadsheets/d/1tYsxsKeOuG9jVeM2xI627TRgM3Pqq3g4YUavaHqCfRQ/export?format=csv&gid=1409069396";
-const AUTO_REFRESH_MS = 60 * 1000;
+// ====== PREENCHA COM OS DADOS DO SEU PROJETO SUPABASE ======
+// Project Settings > API no painel do Supabase.
+const SUPABASE_URL = "https://ewdskrroiihikixdzodu.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_ix38aPX8oWKAOT3gcqrprQ_1RAxVoc4";
+// =============================================================
+const FALLBACK_POLL_MS = 5 * 60 * 1000; // rede de segurança, caso o realtime caia
+
+let supabaseClient = null;
+let supabaseConfigured = /^https?:\/\//.test(SUPABASE_URL) && SUPABASE_ANON_KEY.length > 20;
+if (supabaseConfigured){
+  try {
+    supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  } catch (e){
+    supabaseConfigured = false;
+  }
+}
 
 let rows = [];
 
 function stripAccents(s){
   return s.normalize("NFD").replace(/[̀-ͯ]/g,"");
-}
-
-function parseCSV(text){
-  const lines = text.replace(/\r\n/g,"\n").split("\n").filter(l => l.length > 0);
-  const result = [];
-  for (const line of lines){
-    const cells = [];
-    let cur = "";
-    let inQuotes = false;
-    for (let i=0;i<line.length;i++){
-      const c = line[i];
-      if (inQuotes){
-        if (c === '"'){
-          if (line[i+1] === '"'){ cur += '"'; i++; }
-          else inQuotes = false;
-        } else cur += c;
-      } else {
-        if (c === '"') inQuotes = true;
-        else if (c === ','){ cells.push(cur); cur=""; }
-        else cur += c;
-      }
-    }
-    cells.push(cur);
-    result.push(cells);
-  }
-  return result;
 }
 
 function classifyStatus(raw){
@@ -349,16 +341,24 @@ function classifyStatus(raw){
   if (s === "ENTREGUE") return {key:"entregue", label:"Entregue"};
   if (s === "REAGENDADO") return {key:"reagendado", label:"Reagendado"};
   if (s === "PROTOTIPO") return {key:"prototipo", label:"Protótipo"};
+  if (s === "CANCELADO") return {key:"cancelado", label:"Cancelado"};
   if (s === "") return {key:"planejado", label:"Planejado"};
   return {key:"planejado", label: raw};
 }
 
 function parseDataField(raw){
   raw = (raw||"").trim();
-  const m = raw.match(/^(\d{1,2})\/(\d{1,2})$/);
+  // aceita "20/04" e também "20/04/2026"
+  const m = raw.match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?$/);
   if (!m) return null;
   const day = parseInt(m[1],10);
   const month = parseInt(m[2],10) - 1;
+  if (m[3]){
+    let y = parseInt(m[3],10);
+    if (y < 100) y += 2000;
+    const explicit = new Date(y, month, day);
+    return explicit.getMonth() === month ? explicit : null;
+  }
   const now = new Date();
   let best = null, bestDiff = Infinity;
   for (let yOffset=-1; yOffset<=1; yOffset++){
@@ -396,50 +396,54 @@ function escapeHtml(s){
 
 async function loadData(){
   const errorBanner = document.getElementById("errorBanner");
+  if (!supabaseConfigured){
+    errorBanner.style.display = "block";
+    errorBanner.textContent = "Configuração pendente: preencha SUPABASE_URL e SUPABASE_ANON_KEY no início do <script> deste arquivo.";
+    return;
+  }
   try {
-    const res = await fetch(CSV_URL + "&_=" + Date.now(), {cache:"no-store"});
-    if (!res.ok) throw new Error("HTTP " + res.status);
-    const text = await res.text();
-    const table = parseCSV(text);
-    const header = table[0].map(h => h.trim().toUpperCase());
-    const idx = {
-      seq: header.indexOf("SEQ"),
-      cliente: header.indexOf("CLIENTE"),
-      data: header.indexOf("DATA"),
-      roteiro: header.indexOf("ROTEIRO"),
-      status: header.indexOf("STATUS")
-    };
-    const parsed = [];
-    for (let i=1;i<table.length;i++){
-      const r = table[i];
-      const clienteRaw = (r[idx.cliente]||"").trim();
-      if (!clienteRaw) continue;
+    const { data, error } = await supabaseClient
+      .from("embarques")
+      .select("seq,cliente,data,roteiro,status")
+      .order("seq", { ascending: true });
+    if (error) throw error;
+
+    const parsed = data.map(r => {
+      const clienteRaw = (r.cliente||"").trim();
       const crmMatch = clienteRaw.match(/^(\d{2,6})[\s-]*(.*)$/);
       const crm = crmMatch ? crmMatch[1] : "";
       const cliente = crmMatch ? crmMatch[2].trim() : clienteRaw;
-      const dataRaw = (r[idx.data]||"").trim();
+      const dataRaw = (r.data||"").trim();
       const dateObj = parseDataField(dataRaw);
-      const statusInfo = classifyStatus(r[idx.status]);
-      parsed.push({
-        seq: parseInt(r[idx.seq],10) || 0,
+      const statusInfo = classifyStatus(r.status);
+      return {
+        seq: r.seq,
         crm,
         cliente,
         dataRaw: dataRaw || "—",
         dateObj,
-        roteiro: (r[idx.roteiro]||"").trim(),
+        roteiro: (r.roteiro||"").trim(),
         statusKey: statusInfo.key,
         status: statusInfo.label
-      });
-    }
+      };
+    });
     rows = parsed;
     document.getElementById("lastUpdated").textContent =
-      "Dados da aba CRMS · atualizado às " + new Date().toLocaleTimeString("pt-BR");
+      "Tempo real (Supabase) · última atualização às " + new Date().toLocaleTimeString("pt-BR");
     errorBanner.style.display = "none";
     render();
   } catch (err){
     errorBanner.style.display = "block";
     errorBanner.textContent = "Não foi possível atualizar agora (" + err.message + "). Mostrando os últimos dados carregados.";
   }
+}
+
+function subscribeRealtime(){
+  if (!supabaseConfigured) return;
+  supabaseClient
+    .channel("embarques-realtime")
+    .on("postgres_changes", { event: "*", schema: "public", table: "embarques" }, () => loadData())
+    .subscribe();
 }
 
 function render(){
@@ -507,6 +511,13 @@ const AUTOSCROLL_PX_PER_SEC = 26;
 const AUTOSCROLL_MIN_OVERFLOW = 6;
 
 function setupAutoScroll(){
+  // Espera o layout assentar antes de medir: no primeiro carregamento as
+  // alturas ainda são 0 e TODAS as colunas pareceriam estar estourando,
+  // sendo duplicadas e animadas sem necessidade.
+  requestAnimationFrame(() => requestAnimationFrame(applyAutoScroll));
+}
+
+function applyAutoScroll(){
   let styleEl = document.getElementById("autoScrollStyles");
   if (!styleEl){
     styleEl = document.createElement("style");
@@ -517,6 +528,7 @@ function setupAutoScroll(){
   document.querySelectorAll(".day-col").forEach((col, i) => {
     const body = col.querySelector(".day-body");
     const scrollEl = col.querySelector(".day-scroll");
+    if (!body || !scrollEl || body.clientHeight <= 0) return; // ainda não dá pra medir
     // Measure the height of ONE full set of cards before duplicating —
     // the loop must travel exactly this much, not just the overflow past
     // the visible area, otherwise the reset snaps back visibly.
@@ -549,8 +561,10 @@ function tickClock(){
 tickClock();
 setInterval(tickClock, 1000);
 
+render();
 loadData();
-setInterval(loadData, AUTO_REFRESH_MS);
+subscribeRealtime();
+setInterval(loadData, FALLBACK_POLL_MS);
 </script>
 
 </body>
