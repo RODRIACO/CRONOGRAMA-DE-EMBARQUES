@@ -497,17 +497,33 @@ function renderStats(){
   document.getElementById("statAtrasadoBox").classList.toggle("alert", c.atrasado > 0);
 }
 
+// Guarda a "impressão digital" do conteúdo de cada coluna já desenhada,
+// para recriar apenas as que mudaram. Recriar uma coluna zera a rolagem
+// dela, então mexer só no necessário mantém as outras correndo sem parar.
+const dayCache = {};
+
 function renderWeek(){
   const today = new Date();
   const weekStart = startOfWeek(today);
   const dayNames = ["SEGUNDA","TERÇA","QUARTA","QUINTA","SEXTA"];
   const grid = document.getElementById("weekGrid");
-  grid.innerHTML = "";
+  const rebuilt = [];
+
   for (let i=0;i<5;i++){
     const d = new Date(weekStart);
     d.setDate(weekStart.getDate()+i);
     const isToday = isSameDay(d, today);
     const dayRows = rows.filter(r => r.dateObj && isSameDay(r.dateObj, d));
+
+    const signature = fmtDate(d) + "|" + isToday + "|" + dayRows.map(r =>
+      [r.crm, r.cliente, r.roteiro, r.statusKey, r.status].join("~")
+    ).join("|");
+
+    const cached = dayCache[i];
+    if (cached && cached.signature === signature && cached.col.isConnected){
+      continue; // esta coluna não mudou: não encosta nela, a rolagem segue
+    }
+
     const col = document.createElement("div");
     col.className = "day-col" + (isToday ? " is-today" : "") + (firstPaint ? " fade-in" : "");
     let innerHtml = "";
@@ -524,31 +540,48 @@ function renderWeek(){
       `).join("");
     }
     col.innerHTML = `<div class="day-header">${dayNames[i]}-FEIRA<span class="date">${fmtDate(d)}</span></div><div class="day-body"><div class="day-scroll">${innerHtml}</div></div>`;
-    grid.appendChild(col);
+
+    if (cached && cached.col.isConnected){
+      grid.replaceChild(col, cached.col); // troca no lugar, preservando a ordem
+    } else {
+      grid.appendChild(col);
+    }
+    dayCache[i] = { signature: signature, col: col };
+    rebuilt.push(i);
   }
+
   firstPaint = false;
-  setupAutoScroll();
+  if (rebuilt.length) setupAutoScroll(rebuilt);
 }
 
 const AUTOSCROLL_PX_PER_SEC = 26;
 const AUTOSCROLL_MIN_OVERFLOW = 6;
 
-function setupAutoScroll(){
-  // Espera o layout assentar antes de medir: no primeiro carregamento as
-  // alturas ainda são 0 e TODAS as colunas pareceriam estar estourando,
+function setupAutoScroll(indices){
+  // Espera o layout assentar antes de medir: logo após criar os elementos
+  // as alturas ainda são 0 e TODAS as colunas pareceriam estar estourando,
   // sendo duplicadas e animadas sem necessidade.
-  requestAnimationFrame(() => requestAnimationFrame(applyAutoScroll));
+  requestAnimationFrame(() => requestAnimationFrame(() => applyAutoScroll(indices)));
 }
 
-function applyAutoScroll(){
-  let styleEl = document.getElementById("autoScrollStyles");
-  if (!styleEl){
-    styleEl = document.createElement("style");
-    styleEl.id = "autoScrollStyles";
-    document.head.appendChild(styleEl);
+// Cada coluna tem seu próprio <style>: assim, reconfigurar uma coluna nunca
+// reescreve o CSS das outras (o que cortaria a animação delas no meio).
+function styleElFor(i){
+  const id = "autoScrollStyles-" + i;
+  let el = document.getElementById(id);
+  if (!el){
+    el = document.createElement("style");
+    el.id = id;
+    document.head.appendChild(el);
   }
-  let css = "";
-  document.querySelectorAll(".day-col").forEach((col, i) => {
+  return el;
+}
+
+function applyAutoScroll(indices){
+  const cols = document.querySelectorAll(".day-col");
+  indices.forEach(i => {
+    const col = cols[i];
+    if (!col) return;
     const body = col.querySelector(".day-body");
     const scrollEl = col.querySelector(".day-scroll");
     if (!body || !scrollEl || body.clientHeight <= 0) return; // ainda não dá pra medir
@@ -557,6 +590,7 @@ function applyAutoScroll(){
     // the visible area, otherwise the reset snaps back visibly.
     const singleSetHeight = Math.round(scrollEl.scrollHeight);
     const overflow = singleSetHeight - body.clientHeight;
+    const styleEl = styleElFor(i);
     if (overflow > AUTOSCROLL_MIN_OVERFLOW && scrollEl.children.length){
       // Duplicate the card list once so the loop wraps seamlessly:
       // once the animation scrolls exactly one set's height, the copy
@@ -564,17 +598,17 @@ function applyAutoScroll(){
       scrollEl.innerHTML += scrollEl.innerHTML;
       const duration = singleSetHeight / AUTOSCROLL_PX_PER_SEC;
       const name = `ascroll${i}`;
-      css += `@keyframes ${name}{
+      styleEl.textContent = `@keyframes ${name}{
         0%{ transform:translateY(0); }
         100%{ transform:translateY(-${singleSetHeight}px); }
-      }\n`;
+      }`;
       scrollEl.style.animation = `${name} ${duration.toFixed(2)}s linear infinite`;
     } else {
+      styleEl.textContent = "";
       scrollEl.style.animation = "none";
       scrollEl.style.transform = "translateY(0)";
     }
   });
-  styleEl.textContent = css;
 }
 
 function tickClock(){
