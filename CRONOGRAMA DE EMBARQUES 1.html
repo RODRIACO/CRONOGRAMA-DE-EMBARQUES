@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cronograma de Embarques — Rodriaço</title>
+<style>
+  :root{
+    --orange:#FF7A29;
+    --orange-dark:#C55A11;
+    --black:#0B0B0D;
+    --blue:#1657D6;
+    --blue-dark:#0E3F9E;
+    --green:#1EA354;
+    --red:#E52020;
+    --purple:#7C4DDC;
+    --gray:#7A8290;
+    --bg1:#DCE9F7;
+    --bg2:#EEF3FA;
+    --border:#D7DEE8;
+  }
+  *{box-sizing:border-box;}
+  html,body{ height:100%; }
+  body{
+    margin:0;
+    font-family:'Segoe UI',Calibri,Arial,sans-serif;
+    background:linear-gradient(160deg,var(--bg1),var(--bg2) 60%);
+    color:#1a1a1a;
+    display:flex;
+    flex-direction:column;
+    min-height:100vh;
+    overflow-x:hidden;
+  }
+
+  /* ---------- HEADER ---------- */
+  header{
+    background:linear-gradient(120deg,#000 0%,#161616 55%,#000 100%);
+    padding:14px 28px;
+    display:flex;
+    align-items:center;
+    gap:24px;
+    flex-wrap:wrap;
+    box-shadow:0 4px 18px rgba(0,0,0,0.35);
+    position:relative;
+    z-index:2;
+  }
+  .brand{
+    display:flex;
+    align-items:center;
+    gap:14px;
+  }
+  .brand .name{
+    font-family:Georgia,'Times New Roman',serif;
+    font-weight:800;
+    font-size:clamp(24px,3vw,34px);
+    background:linear-gradient(90deg,#FF9A4D,var(--orange) 60%,var(--orange-dark));
+    -webkit-background-clip:text;
+    background-clip:text;
+    color:transparent;
+    letter-spacing:1px;
+  }
+  .brand .sub{
+    display:flex;
+    flex-direction:column;
+    line-height:1.15;
+    border-left:2px solid #444;
+    padding-left:14px;
+  }
+  .brand .sub .tagline{ font-size:11px; color:#c9c9c9; letter-spacing:1.5px; text-transform:uppercase; }
+  .brand .sub .partner{ font-size:15px; font-weight:700; color:#7fb1ff; letter-spacing:0.5px; }
+
+  .title-wrap{
+    flex:1;
+    text-align:center;
+    min-width:260px;
+  }
+  .title-wrap h1{
+    margin:0;
+    font-size:clamp(18px,2.6vw,30px);
+    letter-spacing:2px;
+    font-weight:800;
+    color:#fff;
+    text-shadow:0 0 18px rgba(255,122,41,0.55);
+  }
+  .title-wrap h1 span{ color:var(--orange); }
+  .title-wrap .clock{
+    margin-top:2px;
+    font-size:12px;
+    color:#9aa3af;
+    letter-spacing:1px;
+  }
+
+  .stats{
+    display:flex;
+    gap:10px;
+    flex-wrap:wrap;
+  }
+  .stat{
+    background:#17191d;
+    border:1px solid #2b2f36;
+    border-radius:10px;
+    padding:8px 16px;
+    text-align:center;
+    min-width:78px;
+  }
+  .stat .lbl{ font-size:10px; letter-spacing:1px; color:#9aa3af; text-transform:uppercase; font-weight:700; }
+  .stat .val{ font-size:26px; font-weight:800; line-height:1.1; margin-top:2px; }
+  .stat.entregue .val{ color:var(--green); }
+  .stat.emrota .val{ color:#4C93FF; }
+  .stat.semana .val{ color:var(--purple); }
+  .stat.hoje .val{ color:var(--orange); }
+  .stat.atrasado .val{ color:var(--red); }
+  .stat.atrasado.alert{
+    border-color:var(--red);
+    animation:pillBlink 1.1s infinite;
+  }
+  @keyframes pillBlink{
+    0%,100%{ background:#17191d; box-shadow:0 0 0 rgba(229,32,32,0); }
+    50%{ background:#3a0e0e; box-shadow:0 0 22px rgba(229,32,32,0.75); }
+  }
+
+  #errorBanner{
+    display:none;
+    background:#FDECEC;
+    border-bottom:2px solid var(--red);
+    color:#8a1f1f;
+    padding:8px 20px;
+    font-size:13px;
+    text-align:center;
+  }
+
+  /* ---------- WEEK GRID ---------- */
+  main{
+    flex:1;
+    padding:18px 20px 22px;
+    display:flex;
+    flex-direction:column;
+  }
+  .week-grid{
+    flex:1;
+    display:grid;
+    grid-template-columns:repeat(5,1fr);
+    gap:16px;
+  }
+  .day-col{
+    display:flex;
+    flex-direction:column;
+    background:rgba(255,255,255,0.55);
+    border:1px solid var(--border);
+    border-radius:14px;
+    overflow:hidden;
+    box-shadow:0 6px 16px rgba(20,40,80,0.08);
+    backdrop-filter:blur(2px);
+    animation:fadeIn 0.5s ease both;
+  }
+  @keyframes fadeIn{
+    from{ opacity:0; transform:translateY(10px); }
+    to{ opacity:1; transform:translateY(0); }
+  }
+  .day-col .day-header{
+    background:linear-gradient(100deg,var(--blue),var(--blue-dark));
+    color:#fff;
+    text-align:center;
+    padding:12px 6px;
+    font-weight:800;
+    letter-spacing:1px;
+    text-transform:uppercase;
+    font-size:clamp(12px,1.1vw,15px);
+  }
+  .day-col.is-today .day-header{
+    background:linear-gradient(100deg,#FF9A4D,var(--orange-dark));
+  }
+  .day-col .day-header .date{ font-size:12px; font-weight:600; opacity:0.9; display:block; margin-top:2px; }
+
+  .day-body{
+    padding:12px;
+    display:flex;
+    flex-direction:column;
+    gap:10px;
+    overflow-y:auto;
+    flex:1;
+  }
+  .day-body::-webkit-scrollbar{ width:6px; }
+  .day-body::-webkit-scrollbar-thumb{ background:#b9c4d2; border-radius:6px; }
+
+  .ship-card{
+    background:#fff;
+    border-radius:10px;
+    border:1px solid var(--border);
+    border-left:6px solid var(--gray);
+    padding:10px 12px;
+    box-shadow:0 2px 6px rgba(20,40,80,0.06);
+    transition:transform 0.15s ease;
+  }
+  .ship-card .crm{ font-size:clamp(15px,1.6vw,20px); font-weight:800; color:#141414; }
+  .ship-card .roteiro{ font-size:clamp(11px,1.1vw,13px); color:var(--gray); margin-top:3px; display:flex; align-items:center; gap:4px; }
+  .ship-card .badge{
+    display:inline-block;
+    margin-top:6px;
+    font-size:10px;
+    font-weight:800;
+    letter-spacing:0.5px;
+    padding:2px 8px;
+    border-radius:999px;
+    color:#fff;
+  }
+  .ship-card.st-emrota{ border-left-color:#4C93FF; }
+  .ship-card.st-emrota .badge{ background:#4C93FF; }
+  .ship-card.st-entregue{ border-left-color:var(--green); }
+  .ship-card.st-entregue .badge{ background:var(--green); }
+  .ship-card.st-reagendado{ border-left-color:var(--purple); }
+  .ship-card.st-reagendado .badge{ background:var(--purple); }
+  .ship-card.st-prototipo{ border-left-color:#B8860B; }
+  .ship-card.st-prototipo .badge{ background:#B8860B; }
+  .ship-card.st-planejado{ border-left-color:var(--gray); }
+  .ship-card.st-planejado .badge{ background:var(--gray); }
+
+  .ship-card.st-atrasado{
+    border-left-color:var(--red);
+    animation:cardBlink 1.1s infinite;
+  }
+  .ship-card.st-atrasado .badge{ background:var(--red); }
+  @keyframes cardBlink{
+    0%,100%{ background:#fff; box-shadow:0 2px 6px rgba(20,40,80,0.06); }
+    50%{ background:#FFE1E1; box-shadow:0 0 16px rgba(229,32,32,0.55); }
+  }
+
+  .day-empty{
+    color:#aab3c0;
+    font-size:13px;
+    text-align:center;
+    margin:auto;
+    font-style:italic;
+  }
+
+  footer{
+    text-align:center;
+    font-size:11px;
+    color:#8993a1;
+    padding:6px 10px 10px;
+  }
+
+  @media (max-width:1100px){
+    .week-grid{ grid-template-columns:repeat(3,1fr); }
+  }
+  @media (max-width:680px){
+    .week-grid{ grid-template-columns:repeat(1,1fr); }
+    header{ justify-content:center; text-align:center; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <span class="name">RODRIAÇO</span>
+    <div class="sub">
+      <span class="tagline">Cozinhas Profissionais</span>
+      <span class="partner">sodexo</span>
+    </div>
+  </div>
+
+  <div class="title-wrap">
+    <h1>CRONOGRAMA DE <span>EMBARQUES</span></h1>
+    <div class="clock" id="clock"></div>
+  </div>
+
+  <div class="stats">
+    <div class="stat entregue"><div class="lbl">Entregue</div><div class="val" id="statEntregue">0</div></div>
+    <div class="stat emrota"><div class="lbl">Em Rota</div><div class="val" id="statEmRota">0</div></div>
+    <div class="stat semana"><div class="lbl">Semana</div><div class="val" id="statSemana">0</div></div>
+    <div class="stat hoje"><div class="lbl">Hoje</div><div class="val" id="statHoje">0</div></div>
+    <div class="stat atrasado" id="statAtrasadoBox"><div class="lbl">Atraso</div><div class="val" id="statAtrasado">0</div></div>
+  </div>
+</header>
+
+<div id="errorBanner"></div>
+
+<main>
+  <div class="week-grid" id="weekGrid"></div>
+</main>
+
+<footer id="lastUpdated">Carregando…</footer>
+
+<script>
+const CSV_URL = "https://docs.google.com/spreadsheets/d/1tYsxsKeOuG9jVeM2xI627TRgM3Pqq3g4YUavaHqCfRQ/export?format=csv&gid=1409069396";
+const AUTO_REFRESH_MS = 60 * 1000;
+
+let rows = [];
+
+function stripAccents(s){
+  return s.normalize("NFD").replace(/[̀-ͯ]/g,"");
+}
+
+function parseCSV(text){
+  const lines = text.replace(/\r\n/g,"\n").split("\n").filter(l => l.length > 0);
+  const result = [];
+  for (const line of lines){
+    const cells = [];
+    let cur = "";
+    let inQuotes = false;
+    for (let i=0;i<line.length;i++){
+      const c = line[i];
+      if (inQuotes){
+        if (c === '"'){
+          if (line[i+1] === '"'){ cur += '"'; i++; }
+          else inQuotes = false;
+        } else cur += c;
+      } else {
+        if (c === '"') inQuotes = true;
+        else if (c === ','){ cells.push(cur); cur=""; }
+        else cur += c;
+      }
+    }
+    cells.push(cur);
+    result.push(cells);
+  }
+  return result;
+}
+
+function classifyStatus(raw){
+  const s = stripAccents((raw||"").trim().toUpperCase());
+  if (s === "ATRASADO") return {key:"atrasado", label:"Atrasado"};
+  if (s === "EM ROTA") return {key:"emrota", label:"Em Rota"};
+  if (s === "ENTREGUE") return {key:"entregue", label:"Entregue"};
+  if (s === "REAGENDADO") return {key:"reagendado", label:"Reagendado"};
+  if (s === "PROTOTIPO") return {key:"prototipo", label:"Protótipo"};
+  if (s === "") return {key:"planejado", label:"Planejado"};
+  return {key:"planejado", label: raw};
+}
+
+function parseDataField(raw){
+  raw = (raw||"").trim();
+  const m = raw.match(/^(\d{1,2})\/(\d{1,2})$/);
+  if (!m) return null;
+  const day = parseInt(m[1],10);
+  const month = parseInt(m[2],10) - 1;
+  const now = new Date();
+  let best = null, bestDiff = Infinity;
+  for (let yOffset=-1; yOffset<=1; yOffset++){
+    const y = now.getFullYear() + yOffset;
+    const candidate = new Date(y, month, day);
+    if (candidate.getMonth() !== month) continue;
+    const diff = Math.abs(candidate.getTime() - now.getTime());
+    if (diff < bestDiff){ bestDiff = diff; best = candidate; }
+  }
+  return best;
+}
+
+function fmtDate(d){
+  const dd = String(d.getDate()).padStart(2,"0");
+  const mm = String(d.getMonth()+1).padStart(2,"0");
+  return `${dd}/${mm}`;
+}
+
+function isSameDay(a,b){
+  return a && b && a.getFullYear()===b.getFullYear() && a.getMonth()===b.getMonth() && a.getDate()===b.getDate();
+}
+
+function startOfWeek(d){
+  const day = d.getDay();
+  const diff = (day === 0 ? -6 : 1) - day;
+  const monday = new Date(d);
+  monday.setDate(d.getDate() + diff);
+  monday.setHours(0,0,0,0);
+  return monday;
+}
+
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+
+async function loadData(){
+  const errorBanner = document.getElementById("errorBanner");
+  try {
+    const res = await fetch(CSV_URL + "&_=" + Date.now(), {cache:"no-store"});
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const text = await res.text();
+    const table = parseCSV(text);
+    const header = table[0].map(h => h.trim().toUpperCase());
+    const idx = {
+      seq: header.indexOf("SEQ"),
+      cliente: header.indexOf("CLIENTE"),
+      data: header.indexOf("DATA"),
+      roteiro: header.indexOf("ROTEIRO"),
+      status: header.indexOf("STATUS")
+    };
+    const parsed = [];
+    for (let i=1;i<table.length;i++){
+      const r = table[i];
+      const clienteRaw = (r[idx.cliente]||"").trim();
+      if (!clienteRaw) continue;
+      const crmMatch = clienteRaw.match(/^(\d{2,6})[\s-]*(.*)$/);
+      const crm = crmMatch ? crmMatch[1] : "";
+      const cliente = crmMatch ? crmMatch[2].trim() : clienteRaw;
+      const dataRaw = (r[idx.data]||"").trim();
+      const dateObj = parseDataField(dataRaw);
+      const statusInfo = classifyStatus(r[idx.status]);
+      parsed.push({
+        seq: parseInt(r[idx.seq],10) || 0,
+        crm,
+        cliente,
+        dataRaw: dataRaw || "—",
+        dateObj,
+        roteiro: (r[idx.roteiro]||"").trim(),
+        statusKey: statusInfo.key,
+        status: statusInfo.label
+      });
+    }
+    rows = parsed;
+    document.getElementById("lastUpdated").textContent =
+      "Dados da aba CRMS · atualizado às " + new Date().toLocaleTimeString("pt-BR");
+    errorBanner.style.display = "none";
+    render();
+  } catch (err){
+    errorBanner.style.display = "block";
+    errorBanner.textContent = "Não foi possível atualizar agora (" + err.message + "). Mostrando os últimos dados carregados.";
+  }
+}
+
+function render(){
+  renderStats();
+  renderWeek();
+}
+
+function renderStats(){
+  const today = new Date();
+  const weekStart = startOfWeek(today);
+  const weekEnd = new Date(weekStart);
+  weekEnd.setDate(weekStart.getDate()+6);
+  weekEnd.setHours(23,59,59,999);
+
+  const c = { entregue:0, emrota:0, atrasado:0, hoje:0, semana:0 };
+  for (const r of rows){
+    if (r.statusKey === "entregue") c.entregue++;
+    if (r.statusKey === "emrota") c.emrota++;
+    if (r.statusKey === "atrasado") c.atrasado++;
+    if (r.dateObj && isSameDay(r.dateObj, today)) c.hoje++;
+    if (r.dateObj && r.dateObj >= weekStart && r.dateObj <= weekEnd) c.semana++;
+  }
+
+  document.getElementById("statEntregue").textContent = c.entregue;
+  document.getElementById("statEmRota").textContent = c.emrota;
+  document.getElementById("statSemana").textContent = c.semana;
+  document.getElementById("statHoje").textContent = c.hoje;
+  document.getElementById("statAtrasado").textContent = c.atrasado;
+  document.getElementById("statAtrasadoBox").classList.toggle("alert", c.atrasado > 0);
+}
+
+function renderWeek(){
+  const today = new Date();
+  const weekStart = startOfWeek(today);
+  const dayNames = ["SEGUNDA","TERÇA","QUARTA","QUINTA","SEXTA"];
+  const grid = document.getElementById("weekGrid");
+  grid.innerHTML = "";
+  for (let i=0;i<5;i++){
+    const d = new Date(weekStart);
+    d.setDate(weekStart.getDate()+i);
+    const isToday = isSameDay(d, today);
+    const dayRows = rows.filter(r => r.dateObj && isSameDay(r.dateObj, d));
+    const col = document.createElement("div");
+    col.className = "day-col" + (isToday ? " is-today" : "");
+    let bodyHtml = "";
+    if (dayRows.length === 0){
+      bodyHtml = `<div class="day-empty">Sem embarques</div>`;
+    } else {
+      bodyHtml = dayRows.map(r => `
+        <div class="ship-card st-${r.statusKey}">
+          <div class="crm">${r.crm ? r.crm + " " : ""}${escapeHtml(r.cliente)}</div>
+          <div class="roteiro">📍 ${escapeHtml(r.roteiro || "—")}</div>
+          <span class="badge">${escapeHtml(r.status)}</span>
+        </div>
+      `).join("");
+    }
+    col.innerHTML = `<div class="day-header">${dayNames[i]}-FEIRA<span class="date">${fmtDate(d)}</span></div><div class="day-body">${bodyHtml}</div>`;
+    grid.appendChild(col);
+  }
+}
+
+function tickClock(){
+  document.getElementById("clock").textContent =
+    new Date().toLocaleString("pt-BR", { weekday:"long", day:"2-digit", month:"2-digit", year:"numeric", hour:"2-digit", minute:"2-digit" });
+}
+tickClock();
+setInterval(tickClock, 1000);
+
+loadData();
+setInterval(loadData, AUTO_REFRESH_MS);
+</script>
+
+</body>
+</html>
