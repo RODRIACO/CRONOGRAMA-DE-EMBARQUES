@@ -191,16 +191,33 @@
   }
 
   .ship-card{
+    position:relative;
     background:#fff;
     border-radius:10px;
     border:1px solid var(--border);
     border-left:6px solid var(--gray);
-    padding:10px 12px;
+    padding:10px 40px 10px 12px;
     box-shadow:0 2px 6px rgba(20,40,80,0.06);
     transition:transform 0.15s ease;
   }
   .ship-card .crm{ font-size:clamp(15px,1.6vw,20px); font-weight:800; color:#141414; }
   .ship-card .roteiro{ font-size:clamp(11px,1.1vw,13px); color:var(--gray); margin-top:3px; display:flex; align-items:center; gap:4px; }
+  .queue-num{
+    position:absolute;
+    top:8px;
+    right:8px;
+    width:24px;
+    height:24px;
+    border-radius:50%;
+    background:linear-gradient(135deg,#FF9A4D,var(--orange-dark));
+    color:#fff;
+    font-size:11px;
+    font-weight:800;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    box-shadow:0 2px 5px rgba(0,0,0,0.25);
+  }
   .ship-card .badge{
     display:inline-block;
     margin-top:6px;
@@ -471,8 +488,9 @@ function renderWeek(){
     if (dayRows.length === 0){
       innerHtml = `<div class="day-empty">Sem embarques</div>`;
     } else {
-      innerHtml = dayRows.map(r => `
+      innerHtml = dayRows.map((r, idx) => `
         <div class="ship-card st-${r.statusKey}">
+          <span class="queue-num">${idx+1}</span>
           <div class="crm">${r.crm ? r.crm + " " : ""}${escapeHtml(r.cliente)}</div>
           <div class="roteiro">📍 ${escapeHtml(r.roteiro || "—")}</div>
           <span class="badge">${escapeHtml(r.status)}</span>
@@ -486,7 +504,6 @@ function renderWeek(){
 }
 
 const AUTOSCROLL_PX_PER_SEC = 26;
-const AUTOSCROLL_PAUSE_SEC = 1.5;
 const AUTOSCROLL_MIN_OVERFLOW = 6;
 
 function setupAutoScroll(){
@@ -501,21 +518,18 @@ function setupAutoScroll(){
     const body = col.querySelector(".day-body");
     const scrollEl = col.querySelector(".day-scroll");
     const distance = Math.round(scrollEl.scrollHeight - body.clientHeight);
-    if (distance > AUTOSCROLL_MIN_OVERFLOW){
-      const travel = distance / AUTOSCROLL_PX_PER_SEC;
-      const total = travel * 2 + AUTOSCROLL_PAUSE_SEC * 2;
-      const p1 = (AUTOSCROLL_PAUSE_SEC / total) * 100;
-      const p2 = ((AUTOSCROLL_PAUSE_SEC + travel) / total) * 100;
-      const p3 = ((AUTOSCROLL_PAUSE_SEC * 2 + travel) / total) * 100;
+    if (distance > AUTOSCROLL_MIN_OVERFLOW && scrollEl.children.length){
+      // Duplicate the card list once so the loop wraps seamlessly:
+      // once the animation scrolls exactly one set's height, the copy
+      // underneath lines up pixel-for-pixel with the original start.
+      scrollEl.innerHTML += scrollEl.innerHTML;
+      const duration = distance / AUTOSCROLL_PX_PER_SEC;
       const name = `ascroll${i}`;
       css += `@keyframes ${name}{
         0%{ transform:translateY(0); }
-        ${p1.toFixed(3)}%{ transform:translateY(0); }
-        ${p2.toFixed(3)}%{ transform:translateY(-${distance}px); }
-        ${p3.toFixed(3)}%{ transform:translateY(-${distance}px); }
-        100%{ transform:translateY(0); }
+        100%{ transform:translateY(-${distance}px); }
       }\n`;
-      scrollEl.style.animation = `${name} ${total.toFixed(2)}s linear infinite`;
+      scrollEl.style.animation = `${name} ${duration.toFixed(2)}s linear infinite`;
     } else {
       scrollEl.style.animation = "none";
       scrollEl.style.transform = "translateY(0)";
