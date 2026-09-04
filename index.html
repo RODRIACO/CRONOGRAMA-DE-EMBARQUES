@@ -28,8 +28,8 @@
     color:#1a1a1a;
     display:flex;
     flex-direction:column;
-    min-height:100vh;
-    overflow-x:hidden;
+    height:100vh;
+    overflow:hidden;
   }
 
   /* ---------- HEADER ---------- */
@@ -132,12 +132,15 @@
   /* ---------- WEEK GRID ---------- */
   main{
     flex:1;
+    min-height:0;
     padding:18px 20px 22px;
     display:flex;
     flex-direction:column;
+    overflow:hidden;
   }
   .week-grid{
     flex:1;
+    min-height:0;
     display:grid;
     grid-template-columns:repeat(5,1fr);
     gap:16px;
@@ -145,6 +148,7 @@
   .day-col{
     display:flex;
     flex-direction:column;
+    min-height:0;
     background:rgba(255,255,255,0.55);
     border:1px solid var(--border);
     border-radius:14px;
@@ -174,14 +178,17 @@
 
   .day-body{
     padding:12px;
+    position:relative;
+    overflow:hidden;
+    flex:1;
+    min-height:0;
+  }
+  .day-scroll{
     display:flex;
     flex-direction:column;
     gap:10px;
-    overflow-y:auto;
-    flex:1;
+    will-change:transform;
   }
-  .day-body::-webkit-scrollbar{ width:6px; }
-  .day-body::-webkit-scrollbar-thumb{ background:#b9c4d2; border-radius:6px; }
 
   .ship-card{
     background:#fff;
@@ -460,11 +467,11 @@ function renderWeek(){
     const dayRows = rows.filter(r => r.dateObj && isSameDay(r.dateObj, d));
     const col = document.createElement("div");
     col.className = "day-col" + (isToday ? " is-today" : "");
-    let bodyHtml = "";
+    let innerHtml = "";
     if (dayRows.length === 0){
-      bodyHtml = `<div class="day-empty">Sem embarques</div>`;
+      innerHtml = `<div class="day-empty">Sem embarques</div>`;
     } else {
-      bodyHtml = dayRows.map(r => `
+      innerHtml = dayRows.map(r => `
         <div class="ship-card st-${r.statusKey}">
           <div class="crm">${r.crm ? r.crm + " " : ""}${escapeHtml(r.cliente)}</div>
           <div class="roteiro">📍 ${escapeHtml(r.roteiro || "—")}</div>
@@ -472,9 +479,49 @@ function renderWeek(){
         </div>
       `).join("");
     }
-    col.innerHTML = `<div class="day-header">${dayNames[i]}-FEIRA<span class="date">${fmtDate(d)}</span></div><div class="day-body">${bodyHtml}</div>`;
+    col.innerHTML = `<div class="day-header">${dayNames[i]}-FEIRA<span class="date">${fmtDate(d)}</span></div><div class="day-body"><div class="day-scroll">${innerHtml}</div></div>`;
     grid.appendChild(col);
   }
+  setupAutoScroll();
+}
+
+const AUTOSCROLL_PX_PER_SEC = 26;
+const AUTOSCROLL_PAUSE_SEC = 1.5;
+const AUTOSCROLL_MIN_OVERFLOW = 6;
+
+function setupAutoScroll(){
+  let styleEl = document.getElementById("autoScrollStyles");
+  if (!styleEl){
+    styleEl = document.createElement("style");
+    styleEl.id = "autoScrollStyles";
+    document.head.appendChild(styleEl);
+  }
+  let css = "";
+  document.querySelectorAll(".day-col").forEach((col, i) => {
+    const body = col.querySelector(".day-body");
+    const scrollEl = col.querySelector(".day-scroll");
+    const distance = Math.round(scrollEl.scrollHeight - body.clientHeight);
+    if (distance > AUTOSCROLL_MIN_OVERFLOW){
+      const travel = distance / AUTOSCROLL_PX_PER_SEC;
+      const total = travel * 2 + AUTOSCROLL_PAUSE_SEC * 2;
+      const p1 = (AUTOSCROLL_PAUSE_SEC / total) * 100;
+      const p2 = ((AUTOSCROLL_PAUSE_SEC + travel) / total) * 100;
+      const p3 = ((AUTOSCROLL_PAUSE_SEC * 2 + travel) / total) * 100;
+      const name = `ascroll${i}`;
+      css += `@keyframes ${name}{
+        0%{ transform:translateY(0); }
+        ${p1.toFixed(3)}%{ transform:translateY(0); }
+        ${p2.toFixed(3)}%{ transform:translateY(-${distance}px); }
+        ${p3.toFixed(3)}%{ transform:translateY(-${distance}px); }
+        100%{ transform:translateY(0); }
+      }\n`;
+      scrollEl.style.animation = `${name} ${total.toFixed(2)}s linear infinite`;
+    } else {
+      scrollEl.style.animation = "none";
+      scrollEl.style.transform = "translateY(0)";
+    }
+  });
+  styleEl.textContent = css;
 }
 
 function tickClock(){
